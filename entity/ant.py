@@ -17,6 +17,11 @@ class Ant:
         (-1, -1), (-1, 1), (1, -1), (1, 1)  # 四个斜角
     ]
     
+    # 障碍物规避参数
+    STUCK_THRESHOLD = 5  # 检测到卡住所需的步数
+    EXPLORATION_STEPS = 20  # 探索模式持续的步数
+    PERPENDICULAR_THRESHOLD = 0.5  # 判断垂直方向的点积阈值
+    
     def __init__(self, x, y):
         """
         初始化蚂蚁
@@ -27,6 +32,11 @@ class Ant:
         self.y = y
         self.carrying_food = False
         self.direction_index = random.randint(0, len(self.DIRECTIONS) - 1)
+        # 用于检测是否卡住
+        self.stuck_counter = 0
+        self.last_positions = []
+        self.exploration_direction = None  # 当前探索的方向索引
+        self.exploration_steps = 0  # 持续探索的剩余步数
         
     def update(self, world):
         """
@@ -80,28 +90,120 @@ class Ant:
             self._move_towards(world.nest_x, world.nest_y, world)
     
     def _move_towards(self, target_x, target_y, world):
-        """朝向目标移动"""
+        """朝向目标移动，带有障碍物规避"""
+        # 记录当前位置用于检测是否卡住
+        self.last_positions.append((self.x, self.y))
+        if len(self.last_positions) > 8:
+            self.last_positions.pop(0)
+        
+        # 检测是否卡住（在同一小范围内循环）
+        is_stuck = False
+        if len(self.last_positions) >= 5:
+            unique_positions = set(self.last_positions)
+            if len(unique_positions) <= 2:  # 在2个位置之间来回移动
+                is_stuck = True
+                self.stuck_counter += 1
+            else:
+                self.stuck_counter = max(0, self.stuck_counter - 1)
+        
         dx = target_x - self.x
         dy = target_y - self.y
         
-        # 找到最接近目标方向的可行方向
-        best_direction = None
-        best_score = float('inf')
+        # 如果处于探索模式，继续沿着墙走
+        if self.exploration_steps > 0:
+            self.exploration_steps -= 1
+            # 尝试沿探索方向移动
+            if self.exploration_direction is not None:
+                dir_x, dir_y = self.DIRECTIONS[self.exploration_direction]
+                new_x = self.x + dir_x
+                new_y = self.y + dir_y
+                
+                if world.is_valid_position(new_x, new_y):
+                    # 可以继续沿这个方向探索
+                    self.direction_index = self.exploration_direction
+                    if self._move_forward(world):
+                        return
+                
+                # 如果原方向被堵，尝试相邻的方向
+                for offset in [-1, 1, -2, 2]:
+                    test_dir = (self.exploration_direction + offset) % 8
+                    self.direction_index = test_dir
+                    if self._move_forward(world):
+                        self.exploration_direction = test_dir
+                        return
+            
+            # 探索失败，退出探索模式
+            self.exploration_steps = 0
+            self.exploration_direction = None
+        
+        # 找到所有可行的方向
+        valid_moves = []
         
         for i, (dir_x, dir_y) in enumerate(self.DIRECTIONS):
             new_x = self.x + dir_x
             new_y = self.y + dir_y
             
             if world.is_valid_position(new_x, new_y):
-                # 计算距离目标的距离
+                # 计算到目标的曼哈顿距离
                 dist = abs(new_x - target_x) + abs(new_y - target_y)
-                if dist < best_score:
-                    best_score = dist
-                    best_direction = i
+                
+                # 计算这个方向与目标方向的关系
+                if dx != 0 or dy != 0:
+                    target_length = math.sqrt(dx * dx + dy * dy)
+                    dot_product = (dir_x * dx + dir_y * dy) / target_length
+                else:
+                    dot_product = 0
+                
+                valid_moves.append({
+                    'direction': i,
+                    'distance': dist,
+                    'x': new_x,
+                    'y': new_y,
+                    'dot_product': dot_product,
+                    'dir_x': dir_x,
+                    'dir_y': dir_y
+                })
         
-        if best_direction is not None:
-            self.direction_index = best_direction
-            self._move_forward(world)
+        if not valid_moves:
+            return  # 完全被困，无法移动
+        
+        # 如果卡住了，进入墙壁跟随模式
+        if is_stuck and self.stuck_counter > self.STUCK_THRESHOLD:
+            # 选择一个垂直于目标方向的探索方向
+            # 找到所有垂直方向（dot_product 接近 0）
+            perpendicular = [m for m in valid_moves if abs(m['dot_product']) < self.PERPENDICULAR_THRESHOLD]
+            
+            if perpendicular:
+                # 随机选择一个垂直方向探索（可能是任何与目标方向接近垂直的方向）
+                perpendicular.sort(key=lambda m: m['distance'])
+                chosen = perpendicular[random.randint(0, min(1, len(perpendicular)-1))]
+                
+                # 进入探索模式：沿着这个方向走一段距离
+                self.exploration_direction = chosen['direction']
+                self.exploration_steps = self.EXPLORATION_STEPS
+                self.stuck_counter = 0
+                
+                self.direction_index = chosen['direction']
+                self._move_forward(world)
+                return
+            
+            # 如果没有垂直方向，尝试任何未访问的方向
+            unvisited = [m for m in valid_moves 
+                        if (m['x'], m['y']) not in self.last_positions[-5:]]
+            if unvisited:
+                chosen = random.choice(unvisited)
+                self.exploration_direction = chosen['direction']
+                self.exploration_steps = self.EXPLORATION_STEPS
+                self.stuck_counter = 0
+                
+                self.direction_index = chosen['direction']
+                self._move_forward(world)
+                return
+        
+        # 正常模式：贪心选择最接近目标的方向
+        valid_moves.sort(key=lambda m: m['distance'])
+        self.direction_index = valid_moves[0]['direction']
+        self._move_forward(world)
     
     def _move_with_randomness(self, world):
         """带随机扰动的移动"""

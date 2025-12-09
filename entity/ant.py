@@ -40,28 +40,28 @@ class Ant:
     
     def _forage_for_food(self, world):
         """寻找食物模式"""
-        # 1. 检测周围是否有食物
+        # 1. 先尝试拾取当前位置的食物
+        if world.pickup_food(self.x, self.y):
+            self.carrying_food = True
+            # 反转方向开始回巢
+            self.direction_index = (self.direction_index + 4) % 8
+            return
+        
+        # 2. 检测周围是否有食物
         food_positions, pheromone_data = world.get_sensor_data(self.x, self.y)
         
         if food_positions:
             # 移动到最近的食物
             target = min(food_positions, key=lambda pos: self._distance(pos[0], pos[1]))
             self._move_towards(target[0], target[1], world)
-            
-            # 尝试拾取食物
-            if (self.x, self.y) == target:
-                if world.pickup_food(self.x, self.y):
-                    self.carrying_food = True
-                    # 反转方向开始回巢
-                    self.direction_index = (self.direction_index + 4) % 8
         else:
-            # 2. 没有食物，尝试跟随信息素
+            # 3. 没有食物，尝试跟随信息素
             if random.random() < 0.8:  # 80% 的概率跟随信息素
                 best_direction = self._choose_direction_by_pheromone(pheromone_data, world)
                 if best_direction is not None:
                     self.direction_index = best_direction
             
-            # 3. 按当前方向移动（带随机扰动）
+            # 4. 按当前方向移动（带随机扰动）
             self._move_with_randomness(world)
     
     def _return_to_nest(self, world):

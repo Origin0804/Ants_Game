@@ -24,16 +24,12 @@ class AntSimulation:
         # 创建世界
         self.world = World()
         
-        # 创建蚂蚁群（在巢穴周围生成）
+        # 创建蚂蚁群（在巢穴周围随机生成）
         self.ants = []
-        for _ in range(ANT_COUNT):
-            x = self.world.nest_x + pygame.math.Vector2(0, 0).rotate(
-                pygame.time.get_ticks() % 360).x
-            y = self.world.nest_y + pygame.math.Vector2(0, 0).rotate(
-                pygame.time.get_ticks() % 360).y
+        for i in range(ANT_COUNT):
             # 在巢穴附近随机生成
-            x = int(self.world.nest_x + (hash(str(_)) % 10 - 5))
-            y = int(self.world.nest_y + (hash(str(_ * 7)) % 10 - 5))
+            x = int(self.world.nest_x + (hash(str(i)) % 10 - 5))
+            y = int(self.world.nest_y + (hash(str(i * 7)) % 10 - 5))
             x = max(0, min(GRID_WIDTH - 1, x))
             y = max(0, min(GRID_HEIGHT - 1, y))
             self.ants.append(Ant(x, y))
@@ -109,7 +105,7 @@ class AntSimulation:
                 self.mouse_dragging = True
             
             elif event.button == 3:  # 右键 - 放置食物
-                self.world.add_food(x, y)
+                self.world.add_food(x, y, INITIAL_FOOD_AMOUNT)
     
     def _handle_mouse_drag(self, pos):
         """处理鼠标拖动（连续放置障碍物）"""

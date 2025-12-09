@@ -17,6 +17,11 @@ class Ant:
         (-1, -1), (-1, 1), (1, -1), (1, 1)  # 四个斜角
     ]
     
+    # 障碍物规避参数
+    STUCK_THRESHOLD = 5  # 检测到卡住所需的步数
+    EXPLORATION_STEPS = 20  # 探索模式持续的步数
+    PERPENDICULAR_THRESHOLD = 0.5  # 判断垂直方向的点积阈值
+    
     def __init__(self, x, y):
         """
         初始化蚂蚁
@@ -30,8 +35,8 @@ class Ant:
         # 用于检测是否卡住
         self.stuck_counter = 0
         self.last_positions = []
-        self.exploration_direction = None  # 探索方向（上或下）
-        self.exploration_steps = 0  # 持续探索的步数
+        self.exploration_direction = None  # 当前探索的方向索引
+        self.exploration_steps = 0  # 持续探索的剩余步数
         
     def update(self, world):
         """
@@ -163,19 +168,19 @@ class Ant:
             return  # 完全被困，无法移动
         
         # 如果卡住了，进入墙壁跟随模式
-        if is_stuck and self.stuck_counter > 5:
+        if is_stuck and self.stuck_counter > self.STUCK_THRESHOLD:
             # 选择一个垂直于目标方向的探索方向
             # 找到所有垂直方向（dot_product 接近 0）
-            perpendicular = [m for m in valid_moves if abs(m['dot_product']) < 0.5]
+            perpendicular = [m for m in valid_moves if abs(m['dot_product']) < self.PERPENDICULAR_THRESHOLD]
             
             if perpendicular:
-                # 随机选择向上或向下探索
+                # 随机选择一个垂直方向探索（可能是任何与目标方向接近垂直的方向）
                 perpendicular.sort(key=lambda m: m['distance'])
                 chosen = perpendicular[random.randint(0, min(1, len(perpendicular)-1))]
                 
                 # 进入探索模式：沿着这个方向走一段距离
                 self.exploration_direction = chosen['direction']
-                self.exploration_steps = 20  # 强制探索20步
+                self.exploration_steps = self.EXPLORATION_STEPS
                 self.stuck_counter = 0
                 
                 self.direction_index = chosen['direction']
@@ -188,7 +193,7 @@ class Ant:
             if unvisited:
                 chosen = random.choice(unvisited)
                 self.exploration_direction = chosen['direction']
-                self.exploration_steps = 20
+                self.exploration_steps = self.EXPLORATION_STEPS
                 self.stuck_counter = 0
                 
                 self.direction_index = chosen['direction']
